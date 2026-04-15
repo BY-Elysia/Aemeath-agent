@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.by.feishu-agent</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/Users/by/Desktop/feishu-agent/.venv/bin/uvicorn</string>
+      <string>feishu_agent.app:create_app</string>
+      <string>--factory</string>
+      <string>--host</string>
+      <string>127.0.0.1</string>
+      <string>--port</string>
+      <string>8000</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/by/Desktop/feishu-agent</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>ARK_BASE_URL</key>
+      <string>https://ark.cn-beijing.volces.com/api/v3</string>
+      <key>ARK_MODEL</key>
+      <string>REPLACE_WITH_ENDPOINT_ID</string>
+      <key>ARK_API_KEY</key>
+      <string>REPLACE_WITH_ARK_API_KEY</string>
+      <key>LARK_CLI_BIN</key>
+      <string>lark-cli</string>
+      <key>APP_DB_PATH</key>
+      <string>/Users/by/Desktop/feishu-agent/data/app.db</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/by/Desktop/feishu-agent/data/feishu-agent.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/by/Desktop/feishu-agent/data/feishu-agent.stderr.log</string>
+  </dict>
+</plist>

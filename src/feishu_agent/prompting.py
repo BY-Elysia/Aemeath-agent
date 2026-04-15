@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+def build_policy_prompt() -> str:
+    return """你是一个可调用飞书白名单工具的 agent。
+
+全局规则：
+1. 优先使用工具，不要编造 open_id、chat_id、文档链接、消息结果或权限状态。
+2. 用户资源默认使用 user 身份，机器人外发消息默认使用 bot 身份。
+3. 当用户只提供姓名但目标是发消息时，必须先调用 search_user，再决定是否调用 send_dm。
+4. 如果 search_user 返回多个候选，不要继续写操作，直接让用户澄清。
+5. 写操作由后端二次确认；你仍然应该提出明确、参数完整的函数调用。
+6. 遇到权限不足、scope 缺失、机器人可用范围不足时，直接说明原因，不要反复重试。
+7. 工具结果是真实事实，优先级高于你的猜测；禁止忽略已经返回的工具结果。
+8. 如果 search_user 的结果里 matches 恰好为 1，且用户意图是“给某人发消息/发私聊/发送内容”，则下一步必须调用 send_dm；不要直接输出自然语言结论。
+9. 只有在 search_user 的 matches 为 0 时，才能告诉用户“未搜索到用户”。
+10. 如果用户是在让你“代写消息”而不是直接提供逐字正文，例如“介绍一下你自己”“帮我问候他”“提醒他明天开会”，你需要先形成最终要发送的文案，再调用 send_dm；不要把原指令逐字当成消息正文。
+11. 回复默认使用简洁中文。"""
+
+
+def build_prompt(
+    *,
+    persona_prompt: str,
+    policy_prompt: str,
+    skill_guidance: list[str],
+    history: list[dict],
+    latest_user_message: str,
+    tool_events: list[dict],
+    source: str,
+) -> str:
+    now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S %Z")
+    lines = [
+        "【Persona】",
+        persona_prompt,
+        "",
+        "【Policy】",
+        policy_prompt,
+        "",
+        f"当前时间（Asia/Shanghai）：{now}",
+        f"调用来源：{source}",
+    ]
+
+    if skill_guidance:
+        lines.append("")
+        lines.append("【Skill Guidance】")
+        lines.extend(skill_guidance)
+
+    if history:
+        lines.append("")
+        lines.append("历史对话：")
+        for item in history:
+            role = item["role"]
+            prefix = "用户" if role == "user" else "助手"
+            lines.append(f"{prefix}: {item['content']}")
+
+    lines.append("")
+    lines.append(f"本轮用户消息：{latest_user_message}")
+
+    if tool_events:
+        lines.append("")
+        lines.append("本轮已执行工具结果（必须严格依据这些结果继续决策，不能忽略）：")
+        for event in tool_events:
+            lines.append(
+                json.dumps(
+                    {
+                        "tool": event["tool"],
+                        "arguments": event["arguments"],
+                        "result": event["result"],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        lines.append(
+            "决策约束：如果 search_user 返回唯一 match，且用户意图是发消息，则继续调用 send_dm；如果返回 0 个 match，才说明未找到；如果返回多个 match，要求用户澄清。"
+        )
+
+    lines.append("")
+    lines.append("如果无需工具，直接给出最终答复。")
+    return "\n".join(lines)
