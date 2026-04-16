@@ -9,6 +9,7 @@ description = "Local Feishu control agent powered by Ark Responses API and lark-
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115,<1.0",
+  "gradio_client>=1.11,<2.0",
   "openai>=1.76.0,<2.0",
   "pydantic>=2.8,<3.0",
   "python-dotenv>=1.0,<2.0",

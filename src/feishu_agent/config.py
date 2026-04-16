@@ -30,6 +30,15 @@ class AppConfig:
     bot_mention_names: tuple[str, ...]
     agent_persona: str = "aemeath"
     enabled_skills: tuple[str, ...] = DEFAULT_ENABLED_SKILLS
+    tts_reply_mode: str = "off"
+    tts_space: str = "Plachta/VITS-Umamusume-voice-synthesizer"
+    tts_api_name: str = "/tts_fn"
+    tts_speaker: str = "特别周 Special Week (Umamusume Pretty Derby)"
+    tts_language: str = "日本語"
+    tts_speed: float = 1.0
+    tts_is_symbol: bool = False
+    tts_output_dir: Path = PROJECT_ROOT / "data" / "tts"
+    tts_hf_token: str = ""
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -52,6 +61,21 @@ class AppConfig:
             bot_mention_names=cls._split_csv_env("BOT_MENTION_NAMES"),
             agent_persona=os.getenv("AGENT_PERSONA", "aemeath").strip().lower() or "aemeath",
             enabled_skills=cls._resolve_enabled_skills(),
+            tts_reply_mode=os.getenv("TTS_REPLY_MODE", "off").strip().lower() or "off",
+            tts_space=os.getenv("TTS_SPACE", "Plachta/VITS-Umamusume-voice-synthesizer").strip()
+            or "Plachta/VITS-Umamusume-voice-synthesizer",
+            tts_api_name=os.getenv("TTS_API_NAME", "/tts_fn").strip() or "/tts_fn",
+            tts_speaker=os.getenv(
+                "TTS_SPEAKER",
+                "特别周 Special Week (Umamusume Pretty Derby)",
+            ).strip()
+            or "特别周 Special Week (Umamusume Pretty Derby)",
+            tts_language=os.getenv("TTS_LANGUAGE", "日本語").strip() or "日本語",
+            tts_speed=float(os.getenv("TTS_SPEED", "1")),
+            tts_is_symbol=os.getenv("TTS_IS_SYMBOL", "false").strip().lower()
+            in {"1", "true", "yes", "on"},
+            tts_output_dir=Path(os.getenv("TTS_OUTPUT_DIR", "./data/tts")).expanduser().resolve(),
+            tts_hf_token=os.getenv("TTS_HF_TOKEN", "").strip(),
         )
 
     @staticmethod
@@ -99,10 +123,14 @@ class AppConfig:
             errors.append("ENABLED_SKILLS must not be empty")
         if self.group_reply_mode not in {"off", "all", "mention"}:
             errors.append("GROUP_REPLY_MODE must be one of: off, all, mention")
+        if self.tts_reply_mode not in {"off", "text_and_audio", "audio_only"}:
+            errors.append("TTS_REPLY_MODE must be one of: off, text_and_audio, audio_only")
         if self.command_timeout_seconds <= 0:
             errors.append("COMMAND_TIMEOUT_SECONDS must be positive")
         if self.max_history_messages <= 0:
             errors.append("MAX_HISTORY_MESSAGES must be positive")
         if self.max_tool_round_trips <= 0:
             errors.append("MAX_TOOL_ROUND_TRIPS must be positive")
+        if self.tts_speed <= 0:
+            errors.append("TTS_SPEED must be positive")
         return errors

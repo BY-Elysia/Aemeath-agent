@@ -85,6 +85,15 @@ ENABLED_SKILLS=conversation,feishu_contact,feishu_im,feishu_calendar,feishu_docs
 GROUP_REPLY_MODE=off
 BOT_MENTION_IDS=
 BOT_MENTION_NAMES=
+TTS_REPLY_MODE=off
+TTS_SPACE=Plachta/VITS-Umamusume-voice-synthesizer
+TTS_API_NAME=/tts_fn
+TTS_SPEAKER=特别周 Special Week (Umamusume Pretty Derby)
+TTS_LANGUAGE=日本語
+TTS_SPEED=1
+TTS_IS_SYMBOL=false
+TTS_OUTPUT_DIR=./data/tts
+TTS_HF_TOKEN=
 AUTO_REPLY_P2P_ONLY=true
 ```
 
@@ -102,6 +111,10 @@ AUTO_REPLY_P2P_ONLY=true
   群里 `@机器人` 时，若飞书事件里给的是机器人 `open_id`，这里填对应值
 - `BOT_MENTION_NAMES`
   群里 `@机器人` 时，也可以按显示名命中
+- `TTS_REPLY_MODE`
+  预留给后续非飞书入口使用；当前飞书自动回复只发送文本
+- `TTS_*`
+  配置 Hugging Face Gradio TTS Space、接口名、角色、语言、语速和本地音频缓存目录
 
 兼容旧配置：
 
@@ -214,6 +227,7 @@ feishu-agent-reply-bot
 - 默认只处理 `p2p` 私聊文本消息
 - 机器人自己的消息不会再次进入处理，避免死循环
 - 普通读请求会直接回复
+- 当前飞书自动回复只发送文本，不发送语音或音频附件
 - 写操作不会自动执行，只会先回复“待确认”
 - 用户在飞书里回复 `确认` 或 `取消`，会走同一个确认流
 
