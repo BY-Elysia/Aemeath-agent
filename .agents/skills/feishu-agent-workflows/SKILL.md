@@ -32,6 +32,7 @@ For message drafting requests, first form the final message text, then call `sen
 
 - Use `create_doc` when the user asks to create a Feishu document from known content.
 - The title and Markdown body must be clear before calling `create_doc`.
+- When local images or files must be written into the document, pass them as `media_files` with `path`, optional `type`, `caption`, and `align`.
 - Document creation is a write action and must go through confirmation.
 
 ## Calendar And Search

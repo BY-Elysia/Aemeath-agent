@@ -65,6 +65,8 @@
 - `search_messages`
 - `read_paper_url_to_feishu_doc`
 
+`create_doc` 使用 bot 身份创建文档，并通过 `lark-cli` 授予当前 CLI 用户管理权限。正文写入使用临时 Markdown 文件，避免 Windows 长参数导致空文档；如需写入本地图片或文件，可传 `media_files`，运行时会调用 `docs +media-insert` 插入飞书媒体块。
+
 写操作策略：
 
 - `send_dm` 需要确认

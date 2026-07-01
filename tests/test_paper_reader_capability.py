@@ -55,7 +55,7 @@ class FakeExecutor:
             {"document": {"url": "https://feishu.example/doc", "title": args["title"]}},
             ToolExecutionRecord(
                 tool_name=tool_name,
-                command=["docs", "+create", "--title", args["title"], "--markdown", "<body>", "--as", "user"],
+                command=["docs", "+create", "--title", args["title"], "--markdown", "<body>", "--as", "bot"],
                 stdout="{}",
                 stderr="",
                 duration_ms=7,

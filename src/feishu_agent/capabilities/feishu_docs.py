@@ -17,17 +17,42 @@ class FeishuDocsCapability(Capability):
         return [
             ToolSpec(
                 name="create_doc",
-                description="Create a Feishu document from markdown using user identity.",
+                description="Create a Feishu document from Markdown using bot identity, with optional local images/files.",
                 parameters={
                     "type": "object",
                     "properties": {
                         "title": {"type": "string", "description": "Document title."},
                         "markdown": {"type": "string", "description": "Markdown body."},
+                        "media_files": {
+                            "type": "array",
+                            "description": "Optional local images or files to insert into the document after Markdown creation.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "path": {"type": "string", "description": "Local file path."},
+                                    "type": {
+                                        "type": "string",
+                                        "enum": ["image", "file"],
+                                        "default": "image",
+                                        "description": "Media block type.",
+                                    },
+                                    "caption": {"type": "string", "description": "Optional image/file caption."},
+                                    "align": {
+                                        "type": "string",
+                                        "enum": ["left", "center", "right"],
+                                        "default": "center",
+                                        "description": "Image alignment.",
+                                    },
+                                },
+                                "required": ["path"],
+                                "additionalProperties": False,
+                            },
+                        },
                         "send_as": {
                             "type": "string",
-                            "enum": ["user"],
-                            "default": "user",
-                            "description": "Identity. Always user in v1.",
+                            "enum": ["bot"],
+                            "default": "bot",
+                            "description": "Identity. Docs and media are created by bot; lark-cli grants the current CLI user access.",
                         },
                     },
                     "required": ["title", "markdown"],
@@ -41,6 +66,7 @@ class FeishuDocsCapability(Capability):
         return (
             "feishu_docs capability:\n"
             "- 创建文档前要先明确标题和正文内容。\n"
+            "- 如需把本地图片或文件写入文档，给 create_doc 传 media_files；图片会在正文创建后插入飞书文档。\n"
             "- create_doc 属于写操作，必须进入确认流。"
         )
 

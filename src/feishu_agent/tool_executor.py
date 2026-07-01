@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,6 +20,9 @@ class ToolExecutionRecord:
     duration_ms: int
     ok: bool
     error_category: str | None = None
+
+
+IMAGE_EXTENSIONS = {".apng", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 
 
 class ToolExecutor:
@@ -69,19 +76,7 @@ class ToolExecutor:
             )
             return self._finalize(tool_name, result, self._normalize_list_agenda)
         if tool_name == "create_doc":
-            result = self._runner.run(
-                [
-                    "docs",
-                    "+create",
-                    "--title",
-                    str(args["title"]),
-                    "--markdown",
-                    str(args["markdown"]),
-                    "--as",
-                    "user",
-                ]
-            )
-            return self._finalize(tool_name, result, self._normalize_create_doc)
+            return self._execute_create_doc(args)
         if tool_name == "search_messages":
             result = self._runner.run(
                 [
@@ -97,6 +92,37 @@ class ToolExecutor:
             )
             return self._finalize(tool_name, result, self._normalize_search_messages)
         raise ToolExecutionError("parameter_error", f"unsupported tool: {tool_name}")
+
+    def _execute_create_doc(self, args: dict[str, Any]) -> tuple[dict[str, Any], ToolExecutionRecord]:
+        title = str(args["title"])
+        markdown = str(args["markdown"])
+        send_as = self._normalize_doc_identity(args.get("send_as"))
+        media_files = self._normalize_media_files(args.get("media_files") or args.get("mediaFiles") or [])
+
+        with TemporaryDirectory(prefix="feishu-agent-doc-") as temp_dir:
+            markdown_path = Path(temp_dir) / "body.md"
+            markdown_path.write_text(markdown, encoding="utf-8")
+            result = self._runner.run(
+                [
+                    "docs",
+                    "+create",
+                    "--title",
+                    title,
+                    "--markdown",
+                    "@body.md",
+                    "--as",
+                    send_as,
+                ],
+                cwd=temp_dir,
+            )
+            payload, record = self._finalize("create_doc", result, self._normalize_create_doc)
+
+        if media_files:
+            doc = self._extract_doc_locator(payload)
+            inserted_media = self._insert_media_files(doc, media_files, send_as)
+            payload["media"] = inserted_media
+            record.stdout = json.dumps(payload, ensure_ascii=False)
+        return payload, record
 
     def _finalize(
         self,
@@ -219,6 +245,109 @@ class ToolExecutor:
         data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
         return {"document": data}
 
+    @staticmethod
+    def _normalize_doc_identity(value: Any) -> str:
+        # Docs/media operations are intentionally bot-backed: local user OAuth tokens expire,
+        # while bot-created docs are still granted to the current CLI user by lark-cli.
+        identity = str(value or "bot").strip().lower()
+        return identity if identity == "bot" else "bot"
+
+    def _normalize_media_files(self, raw_media_files: Any) -> list[dict[str, Any]]:
+        if not raw_media_files:
+            return []
+        if isinstance(raw_media_files, (str, Path)):
+            raw_items = [raw_media_files]
+        elif isinstance(raw_media_files, list):
+            raw_items = raw_media_files
+        else:
+            raise ToolExecutionError("parameter_error", "media_files must be a list")
+
+        media_files: list[dict[str, Any]] = []
+        for item in raw_items:
+            if isinstance(item, (str, Path)):
+                raw_path = str(item)
+                raw_type = ""
+                caption = ""
+                align = ""
+            elif isinstance(item, dict):
+                raw_path = str(item.get("path") or item.get("file") or "").strip()
+                raw_type = str(item.get("type") or "").strip().lower()
+                caption = str(item.get("caption") or item.get("alt") or "").strip()
+                align = str(item.get("align") or "").strip().lower()
+            else:
+                raise ToolExecutionError("parameter_error", "media_files items must be paths or objects")
+
+            if not raw_path:
+                raise ToolExecutionError("parameter_error", "media file path is required")
+            path = Path(raw_path).expanduser().resolve()
+            if not path.is_file():
+                raise ToolExecutionError("parameter_error", f"media file does not exist: {raw_path}")
+
+            media_type = raw_type or ("image" if path.suffix.lower() in IMAGE_EXTENSIONS else "file")
+            if media_type not in {"image", "file"}:
+                raise ToolExecutionError("parameter_error", "media file type must be image or file")
+            if align and align not in {"left", "center", "right"}:
+                raise ToolExecutionError("parameter_error", "media file align must be left, center, or right")
+
+            media_files.append(
+                {
+                    "path": path,
+                    "type": media_type,
+                    "caption": caption,
+                    "align": align or ("center" if media_type == "image" else ""),
+                }
+            )
+        return media_files
+
+    @staticmethod
+    def _extract_doc_locator(payload: dict[str, Any]) -> str:
+        document = payload.get("document") if isinstance(payload.get("document"), dict) else {}
+        for key in ("doc_url", "url", "document_url", "doc_id", "document_id", "token"):
+            value = str(document.get(key) or "").strip()
+            if value:
+                return value
+        raise ToolExecutionError("tool_error", "created document response did not include a document URL or ID")
+
+    def _insert_media_files(self, doc: str, media_files: list[dict[str, Any]], send_as: str) -> list[dict[str, Any]]:
+        inserted: list[dict[str, Any]] = []
+        for media in media_files:
+            path = media["path"]
+            relative_file = f".{os.sep}{path.name}"
+            command = [
+                "docs",
+                "+media-insert",
+                "--doc",
+                doc,
+                "--file",
+                relative_file,
+                "--type",
+                media["type"],
+                "--as",
+                send_as,
+            ]
+            if media["caption"]:
+                command.extend(["--caption", media["caption"]])
+            if media["type"] == "image" and media["align"]:
+                command.extend(["--align", media["align"]])
+            result = self._runner.run(command, cwd=path.parent)
+            if result.returncode != 0:
+                raise self._map_error(result.parsed_json, result)
+
+            raw = result.parsed_json if isinstance(result.parsed_json, dict) else {}
+            data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
+            inserted.append(
+                {
+                    "path": str(path),
+                    "type": media["type"],
+                    "caption": media["caption"],
+                    "align": media["align"],
+                    "block_id": data.get("block_id"),
+                    "file_token": data.get("file_token"),
+                    "document_id": data.get("document_id"),
+                }
+            )
+        return inserted
+
     def _normalize_search_messages(self, parsed: dict | str) -> dict[str, Any]:
         raw = parsed if isinstance(parsed, dict) else {}
         data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
@@ -246,7 +375,8 @@ def summarize_pending_action(tool_name: str, args: dict[str, Any]) -> tuple[str,
             {
                 "title": args["title"],
                 "markdown_preview": str(args["markdown"])[:120],
-                "send_as": "user",
+                "media_files": args.get("media_files") or [],
+                "send_as": "bot",
             },
         )
     if tool_name == "read_paper_url_to_feishu_doc":
@@ -257,7 +387,7 @@ def summarize_pending_action(tool_name: str, args: dict[str, Any]) -> tuple[str,
                 "paper_url": str(args.get("paper_url") or "").strip(),
                 "focus": str(args.get("focus") or "").strip(),
                 "max_pages": args.get("max_pages") or 20,
-                "send_as": "user",
+                "send_as": "bot",
             },
         )
     return (

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+
 from feishu_agent.cli_runner import CommandResult
 from feishu_agent.tool_executor import ToolExecutor
 
@@ -89,3 +93,95 @@ def test_normalize_search_messages_reads_data_wrapper() -> None:
 
     assert payload["total"] == 1
     assert payload["messages"][0]["message_id"] == "om_xxx"
+
+
+class RecordingRunner:
+    def __init__(self, expected_markdown: str, image_path: Path | None = None) -> None:
+        self.expected_markdown = expected_markdown
+        self.image_path = image_path
+        self.calls: list[tuple[list[str], Path | None]] = []
+
+    def run(self, args, *, cwd=None):
+        cwd_path = Path(cwd) if cwd is not None else None
+        self.calls.append((list(args), cwd_path))
+        if args[:2] == ["docs", "+create"]:
+            assert "--markdown" in args
+            markdown_arg = args[args.index("--markdown") + 1]
+            assert markdown_arg == "@body.md"
+            assert cwd_path is not None
+            assert (cwd_path / "body.md").read_text(encoding="utf-8") == self.expected_markdown
+            payload = {
+                "ok": True,
+                "data": {
+                    "doc_id": "doc_token",
+                    "doc_url": "https://www.feishu.cn/docx/doc_token",
+                    "message": "文档创建成功",
+                },
+            }
+            return CommandResult(
+                command=["lark-cli", *args],
+                returncode=0,
+                stdout=json.dumps(payload, ensure_ascii=False),
+                stderr="",
+                duration_ms=5,
+                parsed_json=payload,
+            )
+        if args[:2] == ["docs", "+media-insert"]:
+            assert self.image_path is not None
+            assert cwd_path == self.image_path.parent
+            assert args[args.index("--file") + 1] == f".{os.sep}{self.image_path.name}"
+            assert args[args.index("--type") + 1] == "image"
+            assert args[args.index("--as") + 1] == "bot"
+            payload = {
+                "ok": True,
+                "data": {
+                    "document_id": "doc_token",
+                    "block_id": "block_image",
+                    "file_token": "file_image",
+                    "type": "image",
+                },
+            }
+            return CommandResult(
+                command=["lark-cli", *args],
+                returncode=0,
+                stdout=json.dumps(payload, ensure_ascii=False),
+                stderr="",
+                duration_ms=9,
+                parsed_json=payload,
+            )
+        raise AssertionError(f"unexpected command: {args}")
+
+
+def test_create_doc_writes_markdown_through_file() -> None:
+    markdown = "# Title\n\n正文内容"
+    runner = RecordingRunner(markdown)
+    executor = ToolExecutor(runner)  # type: ignore[arg-type]
+
+    payload, record = executor.execute("create_doc", {"title": "Title", "markdown": markdown})
+
+    assert payload["document"]["doc_url"] == "https://www.feishu.cn/docx/doc_token"
+    assert record.ok is True
+    assert runner.calls[0][0][:2] == ["docs", "+create"]
+    assert runner.calls[0][0][runner.calls[0][0].index("--as") + 1] == "bot"
+
+
+def test_create_doc_inserts_media_files(tmp_path: Path) -> None:
+    image_path = tmp_path / "figure.png"
+    image_path.write_bytes(b"fake png")
+    markdown = "# Title\n\n正文内容"
+    runner = RecordingRunner(markdown, image_path=image_path)
+    executor = ToolExecutor(runner)  # type: ignore[arg-type]
+
+    payload, _ = executor.execute(
+        "create_doc",
+        {
+            "title": "Title",
+            "markdown": markdown,
+            "media_files": [{"path": str(image_path), "caption": "Figure 1"}],
+        },
+    )
+
+    assert len(runner.calls) == 2
+    assert runner.calls[1][0][:2] == ["docs", "+media-insert"]
+    assert payload["media"][0]["file_token"] == "file_image"
+    assert payload["media"][0]["block_id"] == "block_image"

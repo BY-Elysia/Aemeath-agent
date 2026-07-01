@@ -5,6 +5,7 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 
 TOKEN_PATTERNS = [
@@ -36,11 +37,12 @@ class CliRunner:
         self._cli_bin = cli_bin
         self._timeout_seconds = timeout_seconds
 
-    def run(self, args: list[str]) -> CommandResult:
+    def run(self, args: list[str], *, cwd: str | Path | None = None) -> CommandResult:
         command = [self._cli_bin, *args]
         started = time.perf_counter()
         completed = subprocess.run(
             command,
+            cwd=str(cwd) if cwd is not None else None,
             capture_output=True,
             text=True,
             encoding="utf-8",

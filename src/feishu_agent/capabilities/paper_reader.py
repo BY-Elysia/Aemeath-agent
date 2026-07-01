@@ -115,9 +115,9 @@ class PaperReaderCapability(Capability):
                         },
                         "send_as": {
                             "type": "string",
-                            "enum": ["user"],
-                            "default": "user",
-                            "description": "Identity. Always user in v1.",
+                            "enum": ["bot"],
+                            "default": "bot",
+                            "description": "Identity. Docs are created by bot; lark-cli grants the current CLI user access.",
                         },
                     },
                     "required": ["title", "paper_url"],
@@ -175,7 +175,7 @@ class PaperReaderCapability(Capability):
             {
                 "title": title,
                 "markdown": markdown,
-                "send_as": "user",
+                "send_as": "bot",
             },
         )
         result = {
@@ -200,7 +200,7 @@ class PaperReaderCapability(Capability):
             "--markdown",
             "<generated-markdown>",
             "--as",
-            "user",
+            "bot",
         ]
         return result, ToolExecutionRecord(
             tool_name=tool_name,
