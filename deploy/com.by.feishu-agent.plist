@@ -6,7 +6,7 @@
     <string>com.by.feishu-agent</string>
     <key>ProgramArguments</key>
     <array>
-      <string>/Users/by/Desktop/feishu-agent/.venv/bin/uvicorn</string>
+      <string>/path/to/feishu-agent/.venv/bin/uvicorn</string>
       <string>feishu_agent.app:create_app</string>
       <string>--factory</string>
       <string>--host</string>
@@ -15,7 +15,7 @@
       <string>8000</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/by/Desktop/feishu-agent</string>
+    <string>/path/to/feishu-agent</string>
     <key>EnvironmentVariables</key>
     <dict>
       <key>ARK_BASE_URL</key>
@@ -27,15 +27,19 @@
       <key>LARK_CLI_BIN</key>
       <string>lark-cli</string>
       <key>APP_DB_PATH</key>
-      <string>/Users/by/Desktop/feishu-agent/data/app.db</string>
+      <string>/path/to/feishu-agent/data/app.db</string>
+      <key>ENABLED_CAPABILITIES</key>
+      <string>conversation,feishu_contact,feishu_im,feishu_calendar,feishu_docs,feishu_search,paper_reader</string>
+      <key>ENABLED_AGENT_SKILLS</key>
+      <string>feishu-agent-workflows</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/Users/by/Desktop/feishu-agent/data/feishu-agent.stdout.log</string>
+    <string>/path/to/feishu-agent/data/feishu-agent.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/by/Desktop/feishu-agent/data/feishu-agent.stderr.log</string>
+    <string>/path/to/feishu-agent/data/feishu-agent.stderr.log</string>
   </dict>
 </plist>

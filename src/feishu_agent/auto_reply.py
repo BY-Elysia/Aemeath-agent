@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
+from xml.etree import ElementTree
 
 from .cli_runner import CliRunner
 from .config import AppConfig
@@ -15,6 +18,75 @@ from .store import SessionStore
 CONFIRM_WORDS = {"确认", "/confirm", "确认执行", "执行"}
 CANCEL_WORDS = {"取消", "/cancel", "取消执行"}
 AT_TAG_RE = re.compile(r"<at\b[^>]*>.*?</at>", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class UploadedFile:
+    file_key: str
+    name: str
+
+
+class FileDownloader(Protocol):
+    def download_file(self, *, message_id: str, file_key: str, file_name: str) -> Path:
+        raise NotImplementedError
+
+
+class MessageResourceDownloader:
+    def __init__(self, runner: CliRunner, output_dir: Path | None = None) -> None:
+        self._runner = runner
+        self._output_dir = output_dir or Path("data") / "incoming"
+
+    def download_file(self, *, message_id: str, file_key: str, file_name: str) -> Path:
+        output = self._build_output_path(message_id, file_key, file_name)
+        result = self._runner.run(
+            [
+                "im",
+                "+messages-resources-download",
+                "--message-id",
+                message_id,
+                "--file-key",
+                file_key,
+                "--type",
+                "file",
+                "--output",
+                output.as_posix(),
+                "--as",
+                "bot",
+            ]
+        )
+        if result.returncode != 0:
+            detail = result.stderr or result.stdout or "unknown error"
+            raise RuntimeError(f"failed to download message file {file_key}: {detail}")
+        saved_path = ""
+        if isinstance(result.parsed_json, dict):
+            data = result.parsed_json.get("data")
+            if isinstance(data, dict):
+                saved_path = str(data.get("saved_path") or "")
+            saved_path = saved_path or str(result.parsed_json.get("saved_path") or "")
+        return Path(saved_path or output).expanduser().resolve()
+
+    def _build_output_path(self, message_id: str, file_key: str, file_name: str) -> Path:
+        safe_message_id = self._sanitize_path_segment(message_id)
+        safe_file_key = self._sanitize_path_segment(file_key)[-16:] or "file"
+        safe_file_name = self._sanitize_file_name(file_name)
+        return self._output_dir / f"{safe_message_id}_{safe_file_key}_{safe_file_name}"
+
+    @staticmethod
+    def _sanitize_path_segment(value: str) -> str:
+        return re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip())[:80]
+
+    @staticmethod
+    def _sanitize_file_name(value: str) -> str:
+        name = Path(str(value or "paper.pdf")).name
+        sanitized = re.sub(r"[^A-Za-z0-9._ -]+", "_", name).strip(" .")
+        return sanitized or "paper.pdf"
+
+
+def configure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
 
 
 class ReplyClient:
@@ -50,6 +122,7 @@ class AutoReplyWorker:
         app_id: str | None = None,
         bot_mention_ids: tuple[str, ...] = (),
         bot_mention_names: tuple[str, ...] = (),
+        file_downloader: FileDownloader | None = None,
     ) -> None:
         self._store = store
         self._harness = harness
@@ -58,6 +131,7 @@ class AutoReplyWorker:
         self._app_id = app_id
         self._bot_mention_ids = {item.strip() for item in bot_mention_ids if item.strip()}
         self._bot_mention_names = {item.strip() for item in bot_mention_names if item.strip()}
+        self._file_downloader = file_downloader
 
     def handle_event(self, event: dict[str, Any]) -> None:
         normalized = self._normalize_event(event)
@@ -66,6 +140,11 @@ class AutoReplyWorker:
 
         session_id = f"im-chat:{normalized['chat_id']}"
         content = normalized["content"]
+        if normalized.get("message_type") == "file":
+            content = self._build_uploaded_file_request(normalized)
+            if not content:
+                return
+
         if content in CONFIRM_WORDS:
             self._handle_confirmation(normalized["message_id"], session_id, True)
             return
@@ -112,7 +191,24 @@ class AutoReplyWorker:
             return None
 
         if str(event.get("message_type") or "").strip().lower() != "text":
-            return None
+            message_type = str(event.get("message_type") or "").strip().lower()
+            if message_type != "file":
+                return None
+            uploaded_file = parse_uploaded_file(str(event.get("content") or ""))
+            if uploaded_file is None:
+                return None
+            message_id = str(event.get("message_id") or "").strip()
+            chat_id = str(event.get("chat_id") or "").strip()
+            if not message_id or not chat_id:
+                return None
+            return {
+                "message_id": message_id,
+                "chat_id": chat_id,
+                "message_type": "file",
+                "content": "",
+                "file_key": uploaded_file.file_key,
+                "file_name": uploaded_file.name,
+            }
 
         message_id = str(event.get("message_id") or "").strip()
         chat_id = str(event.get("chat_id") or "").strip()
@@ -123,6 +219,7 @@ class AutoReplyWorker:
         return {
             "message_id": message_id,
             "chat_id": chat_id,
+            "message_type": "text",
             "content": self._clean_text_content(content, mentions),
         }
 
@@ -142,6 +239,22 @@ class AutoReplyWorker:
             return None
 
         message_type = str(message.get("message_type") or "").strip().lower()
+        if message_type == "file":
+            uploaded_file = parse_uploaded_file(str(raw_content or ""))
+            if uploaded_file is None:
+                return None
+            message_id = str(message.get("message_id") or "").strip()
+            chat_id = str(message.get("chat_id") or "").strip()
+            if not message_id or not chat_id:
+                return None
+            return {
+                "message_id": message_id,
+                "chat_id": chat_id,
+                "message_type": "file",
+                "content": "",
+                "file_key": uploaded_file.file_key,
+                "file_name": uploaded_file.name,
+            }
         if message_type != "text":
             return None
 
@@ -154,6 +267,7 @@ class AutoReplyWorker:
         return {
             "message_id": message_id,
             "chat_id": chat_id,
+            "message_type": "text",
             "content": content,
         }
 
@@ -213,6 +327,58 @@ class AutoReplyWorker:
             cleaned = re.sub(rf"^\s*@{re.escape(mention_name)}\s*", " ", cleaned)
         return " ".join(cleaned.split()).strip()
 
+    def _build_uploaded_file_request(self, normalized: dict[str, str]) -> str | None:
+        file_name = str(normalized.get("file_name") or "").strip()
+        if not file_name.lower().endswith(".pdf"):
+            self._reply_client.reply_text(normalized["message_id"], "我收到了文件，但当前论文阅读只支持 PDF 文件。")
+            return None
+        if self._file_downloader is None:
+            self._reply_client.reply_text(normalized["message_id"], "我收到了 PDF，但当前运行方式没有配置附件下载器。")
+            return None
+        try:
+            file_path = self._file_downloader.download_file(
+                message_id=normalized["message_id"],
+                file_key=normalized["file_key"],
+                file_name=file_name,
+            )
+        except Exception as exc:
+            self._reply_client.reply_text(normalized["message_id"], f"下载 PDF 附件失败：{exc}")
+            return None
+
+        return (
+            f"用户上传了 PDF 论文文件“{file_name}”。\n"
+            f"本地文件：{file_path.as_uri()}\n"
+            "请阅读这篇论文，并将阅读报告写到飞书文档中。"
+        )
+
+
+def parse_uploaded_file(content: str) -> UploadedFile | None:
+    raw = str(content or "").strip()
+    if not raw:
+        return None
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        file_key = str(payload.get("file_key") or payload.get("key") or "").strip()
+        name = str(payload.get("file_name") or payload.get("name") or "").strip()
+        if file_key and name:
+            return UploadedFile(file_key=file_key, name=name)
+
+    try:
+        element = ElementTree.fromstring(raw)
+    except ElementTree.ParseError:
+        return None
+    if element.tag.lower() != "file":
+        return None
+    file_key = str(element.attrib.get("key") or element.attrib.get("file_key") or "").strip()
+    name = str(element.attrib.get("name") or element.attrib.get("file_name") or "").strip()
+    if not file_key or not name:
+        return None
+    return UploadedFile(file_key=file_key, name=name)
+
 
 def load_lark_app_id(config_path: str | None = None) -> str | None:
     path = Path(config_path or "~/.lark-cli/config.json").expanduser()
@@ -228,6 +394,7 @@ def load_lark_app_id(config_path: str | None = None) -> str | None:
 
 
 def run() -> None:
+    configure_utf8_stdio()
     config = AppConfig.from_env()
     runner = CliRunner(config.lark_cli_bin, config.command_timeout_seconds)
     store = SessionStore(config.app_db_path)
@@ -240,6 +407,7 @@ def run() -> None:
         app_id=load_lark_app_id(),
         bot_mention_ids=config.bot_mention_ids,
         bot_mention_names=config.bot_mention_names,
+        file_downloader=MessageResourceDownloader(runner),
     )
     command = [
         config.lark_cli_bin,
@@ -251,14 +419,16 @@ def run() -> None:
         "--as",
         "bot",
     ]
-    print("Feishu Agent Auto Reply")
-    print(f"服务地址: {config.feishu_agent_base_url}")
-    print(f"监听命令: {' '.join(command)}")
+    print("Feishu Agent Auto Reply", flush=True)
+    print(f"服务地址: {config.feishu_agent_base_url}", flush=True)
+    print(f"监听命令: {' '.join(command)}", flush=True)
     with subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
-        stderr=None,
+        stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
     ) as process:
         if process.stdout is None:
@@ -271,12 +441,16 @@ def run() -> None:
                 try:
                     event = json.loads(raw)
                 except json.JSONDecodeError:
-                    print(f"忽略无法解析的事件: {raw}")
+                    print(f"忽略无法解析的事件: {raw}", flush=True)
                     continue
                 try:
                     worker.handle_event(event)
                 except Exception as exc:
-                    print(f"处理事件失败: {exc}")
+                    print(f"处理事件失败: {exc}", flush=True)
         except KeyboardInterrupt:
             process.terminate()
         raise SystemExit(process.wait())
+
+
+if __name__ == "__main__":
+    run()

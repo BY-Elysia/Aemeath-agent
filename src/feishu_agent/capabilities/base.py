@@ -16,12 +16,12 @@ class ToolSpec:
 
 
 @dataclass(frozen=True)
-class SkillContext:
+class CapabilityContext:
     session_id: str
     source: str
 
 
-class Skill(ABC):
+class Capability(ABC):
     name: str
     description: str
 
@@ -38,7 +38,7 @@ class Skill(ABC):
         self,
         tool_name: str,
         args: dict[str, Any],
-        context: SkillContext,
+        context: CapabilityContext,
     ) -> tuple[dict[str, Any], ToolExecutionRecord]:
         raise NotImplementedError
 

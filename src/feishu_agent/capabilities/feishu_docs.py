@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from ..tool_executor import ToolExecutor
-from .base import Skill, SkillContext, ToolSpec
+from .base import Capability, CapabilityContext, ToolSpec
 
 
-class FeishuSearchSkill(Skill):
-    name = "feishu_search"
-    description = "飞书消息检索能力。"
+class FeishuDocsCapability(Capability):
+    name = "feishu_docs"
+    description = "飞书文档创建能力。"
 
     def __init__(self, executor: ToolExecutor) -> None:
         self._executor = executor
@@ -16,12 +16,13 @@ class FeishuSearchSkill(Skill):
     def get_tools(self) -> list[ToolSpec]:
         return [
             ToolSpec(
-                name="search_messages",
-                description="Search Feishu messages by keyword using user identity.",
+                name="create_doc",
+                description="Create a Feishu document from markdown using user identity.",
                 parameters={
                     "type": "object",
                     "properties": {
-                        "query": {"type": "string", "description": "Search keyword."},
+                        "title": {"type": "string", "description": "Document title."},
+                        "markdown": {"type": "string", "description": "Markdown body."},
                         "send_as": {
                             "type": "string",
                             "enum": ["user"],
@@ -29,24 +30,24 @@ class FeishuSearchSkill(Skill):
                             "description": "Identity. Always user in v1.",
                         },
                     },
-                    "required": ["query"],
+                    "required": ["title", "markdown"],
                     "additionalProperties": False,
                 },
-                requires_confirmation=False,
+                requires_confirmation=True,
             )
         ]
 
     def get_guidance(self) -> str:
         return (
-            "feishu_search skill:\n"
-            "- 当用户要求搜索聊天记录或关键词消息时，调用 search_messages。\n"
-            "- 这是只读能力，不需要确认。"
+            "feishu_docs capability:\n"
+            "- 创建文档前要先明确标题和正文内容。\n"
+            "- create_doc 属于写操作，必须进入确认流。"
         )
 
     def execute(
         self,
         tool_name: str,
         args: dict[str, Any],
-        context: SkillContext,
+        context: CapabilityContext,
     ):
         return self._executor.execute(tool_name, args)

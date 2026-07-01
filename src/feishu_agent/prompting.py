@@ -28,7 +28,8 @@ def build_prompt(
     *,
     persona_prompt: str,
     policy_prompt: str,
-    skill_guidance: list[str],
+    agent_skill_guidance: list[str],
+    capability_guidance: list[str],
     history: list[dict],
     latest_user_message: str,
     tool_events: list[dict],
@@ -46,10 +47,15 @@ def build_prompt(
         f"调用来源：{source}",
     ]
 
-    if skill_guidance:
+    if agent_skill_guidance:
         lines.append("")
-        lines.append("【Skill Guidance】")
-        lines.extend(skill_guidance)
+        lines.append("【Agent Skills】")
+        lines.extend(agent_skill_guidance)
+
+    if capability_guidance:
+        lines.append("")
+        lines.append("【Runtime Capabilities】")
+        lines.extend(capability_guidance)
 
     if history:
         lines.append("")

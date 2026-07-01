@@ -3,15 +3,16 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .agent_skills import AgentSkillDocument, format_agent_skill_guidance, load_agent_skill_documents
 from .ark_client import ArkClient
+from .capabilities import load_capabilities
+from .capabilities.base import Capability, CapabilityContext, ToolSpec
 from .cli_runner import CliRunner
 from .config import AppConfig
 from .errors import PendingActionError, ToolExecutionError
 from .persona import resolve_persona_prompt
 from .prompting import build_policy_prompt, build_prompt
 from .schemas import ChatResponse, ConfirmActionResponse, HealthResponse, PendingActionView
-from .skills import load_skills
-from .skills.base import Skill, SkillContext, ToolSpec
 from .store import SessionStore
 from .tool_executor import ToolExecutor, summarize_pending_action
 from .tool_registry import index_tools, responses_tools
@@ -21,7 +22,8 @@ from .tool_registry import index_tools, responses_tools
 class AgentIdentity:
     persona: str
     model: str
-    skills: tuple[str, ...]
+    capabilities: tuple[str, ...]
+    agent_skills: tuple[str, ...]
 
 
 class AgentHarness:
@@ -32,15 +34,21 @@ class AgentHarness:
         store: SessionStore,
         ark_client: ArkClient,
         tool_executor: ToolExecutor,
-        skills: list[Skill] | None = None,
+        capabilities: list[Capability] | None = None,
+        agent_skill_documents: list[AgentSkillDocument] | None = None,
     ) -> None:
         self._config = config
         self._store = store
         self._ark_client = ark_client
         self._tool_executor = tool_executor
-        self._skills = skills or load_skills(config.enabled_skills, tool_executor)
+        self._capabilities = capabilities or load_capabilities(config.enabled_capabilities, tool_executor, config)
+        self._agent_skill_documents = (
+            agent_skill_documents
+            if agent_skill_documents is not None
+            else load_agent_skill_documents(config.enabled_agent_skills)
+        )
         self._tools_by_name = index_tools(self._collect_tools())
-        self._skills_by_tool = self._index_skill_owners()
+        self._capabilities_by_tool = self._index_capability_owners()
         self._persona_prompt = resolve_persona_prompt(config.agent_persona)
         self._policy_prompt = build_policy_prompt()
 
@@ -55,7 +63,10 @@ class AgentHarness:
             prompt = build_prompt(
                 persona_prompt=self._persona_prompt,
                 policy_prompt=self._policy_prompt,
-                skill_guidance=[skill.get_guidance() for skill in self._skills if skill.get_guidance()],
+                agent_skill_guidance=format_agent_skill_guidance(self._agent_skill_documents),
+                capability_guidance=[
+                    capability.get_guidance() for capability in self._capabilities if capability.get_guidance()
+                ],
                 history=history[:-1],
                 latest_user_message=message,
                 tool_events=tool_events,
@@ -193,11 +204,18 @@ class AgentHarness:
         return AgentIdentity(
             persona=self._config.agent_persona,
             model=self._config.ark_model,
-            skills=tuple(skill.name for skill in self._skills),
+            capabilities=tuple(capability.name for capability in self._capabilities),
+            agent_skills=tuple(document.name for document in self._agent_skill_documents),
         )
 
-    def list_skills(self) -> list[dict[str, str]]:
-        return [{"name": skill.name, "description": skill.description} for skill in self._skills]
+    def list_capabilities(self) -> list[dict[str, str]]:
+        return [{"name": capability.name, "description": capability.description} for capability in self._capabilities]
+
+    def list_agent_skills(self) -> list[dict[str, str]]:
+        return [
+            {"name": document.name, "description": document.description, "path": str(document.path)}
+            for document in self._agent_skill_documents
+        ]
 
     def get_session_history(self, session_id: str, limit: int | None = None) -> list[dict]:
         capped = limit or self._config.max_history_messages
@@ -208,15 +226,15 @@ class AgentHarness:
 
     def _collect_tools(self) -> list[ToolSpec]:
         tools: list[ToolSpec] = []
-        for skill in self._skills:
-            tools.extend(skill.get_tools())
+        for capability in self._capabilities:
+            tools.extend(capability.get_tools())
         return tools
 
-    def _index_skill_owners(self) -> dict[str, Skill]:
-        owners: dict[str, Skill] = {}
-        for skill in self._skills:
-            for tool in skill.get_tools():
-                owners[tool.name] = skill
+    def _index_capability_owners(self) -> dict[str, Capability]:
+        owners: dict[str, Capability] = {}
+        for capability in self._capabilities:
+            for tool in capability.get_tools():
+                owners[tool.name] = capability
         return owners
 
     def _execute_tool(
@@ -228,11 +246,15 @@ class AgentHarness:
         args: dict,
         source: str,
     ):
-        skill = self._skills_by_tool.get(tool_name)
-        if skill is None:
+        capability = self._capabilities_by_tool.get(tool_name)
+        if capability is None:
             raise ToolExecutionError("parameter_error", f"unsupported tool: {tool_name}")
         try:
-            result, record = skill.execute(tool_name, args, SkillContext(session_id=session_id, source=source))
+            result, record = capability.execute(
+                tool_name,
+                args,
+                CapabilityContext(session_id=session_id, source=source),
+            )
         except ToolExecutionError as exc:
             detail = exc.detail or {}
             self._store.log_tool_call(
@@ -419,6 +441,8 @@ class AgentHarness:
             return f"已发送消息，message_id={result.get('message_id')}。"
         if tool_name == "create_doc":
             return "已创建飞书文档。"
+        if tool_name == "read_paper_url_to_feishu_doc":
+            return "已生成论文阅读 Markdown，并创建飞书文档。"
         return f"已执行 {tool_name}。"
 
 
@@ -429,7 +453,8 @@ def build_harness(
     runner: CliRunner | None = None,
     tool_executor: ToolExecutor | None = None,
     ark_client: ArkClient | None = None,
-    skills: list[Skill] | None = None,
+    capabilities: list[Capability] | None = None,
+    agent_skill_documents: list[AgentSkillDocument] | None = None,
 ) -> AgentHarness:
     runtime_store = store or SessionStore(config.app_db_path)
     runtime_runner = runner or CliRunner(config.lark_cli_bin, config.command_timeout_seconds)
@@ -444,5 +469,6 @@ def build_harness(
         store=runtime_store,
         ark_client=runtime_ark_client,
         tool_executor=runtime_executor,
-        skills=skills,
+        capabilities=capabilities,
+        agent_skill_documents=agent_skill_documents,
     )

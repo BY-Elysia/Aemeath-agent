@@ -5,7 +5,16 @@ from feishu_agent.shell import ShellClient
 
 class FakeHarness:
     def whoami(self):
-        return type("Identity", (), {"persona": "aemeath", "model": "ep-test", "skills": ("conversation",)})()
+        return type(
+            "Identity",
+            (),
+            {
+                "persona": "aemeath",
+                "model": "ep-test",
+                "agent_skills": ("feishu-agent-workflows",),
+                "capabilities": ("conversation",),
+            },
+        )()
 
 
 def test_unknown_command_returns_false(capsys) -> None:

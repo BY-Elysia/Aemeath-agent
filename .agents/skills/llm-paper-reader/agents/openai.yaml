@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper Reader"
+  short_description: "Create formal visual LLM paper reports"
+  default_prompt: "Use $llm-paper-reader to create a formal Chinese academic explanation report for a reader with basic LLM and deep-learning knowledge but no assumed subfield expertise. Build a concept dependency map, add grounded just-in-time prerequisite bridges, and distinguish current-paper contributions from cited background and official-code details. For every critical mechanism, explain the conventional starting point, the paper's change, exact calculations, tensor flow, learning path, one concrete walkthrough, and recursively expanded pseudocode. Render mathematics correctly, use only helpful cropped visuals, and preserve grounded limitations and future work."

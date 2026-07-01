@@ -40,7 +40,8 @@ def make_config(tmp_path: Path) -> AppConfig:
         bot_mention_ids=(),
         bot_mention_names=(),
         agent_persona="aemeath",
-        enabled_skills=("conversation", "feishu_contact"),
+        enabled_capabilities=("conversation", "feishu_contact"),
+        enabled_agent_skills=("feishu-agent-workflows",),
     )
 
 

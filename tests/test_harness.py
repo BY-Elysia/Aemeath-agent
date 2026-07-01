@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from feishu_agent.ark_client import ArkResponse, FunctionCall
+from feishu_agent.capabilities import DEFAULT_ENABLED_CAPABILITIES, load_capabilities
 from feishu_agent.config import AppConfig
 from feishu_agent.errors import ToolExecutionError
 from feishu_agent.harness import AgentHarness
-from feishu_agent.skills import DEFAULT_ENABLED_SKILLS, load_skills
 from feishu_agent.store import SessionStore
 
 
@@ -48,7 +48,7 @@ class FakeToolExecutor:
         return result, record
 
 
-def make_config(tmp_path: Path, *, enabled_skills: tuple[str, ...] = DEFAULT_ENABLED_SKILLS) -> AppConfig:
+def make_config(tmp_path: Path, *, enabled_capabilities: tuple[str, ...] = DEFAULT_ENABLED_CAPABILITIES) -> AppConfig:
     return AppConfig(
         ark_api_key="test-key",
         ark_base_url="https://ark.cn-beijing.volces.com/api/v3",
@@ -64,7 +64,8 @@ def make_config(tmp_path: Path, *, enabled_skills: tuple[str, ...] = DEFAULT_ENA
         bot_mention_ids=(),
         bot_mention_names=(),
         agent_persona="aemeath",
-        enabled_skills=enabled_skills,
+        enabled_capabilities=enabled_capabilities,
+        enabled_agent_skills=("feishu-agent-workflows",),
     )
 
 
@@ -74,9 +75,9 @@ def make_harness(
     ark_responses: list[ArkResponse],
     results: dict[str, dict] | None = None,
     errors: dict[str, ToolExecutionError] | None = None,
-    enabled_skills: tuple[str, ...] = DEFAULT_ENABLED_SKILLS,
+    enabled_capabilities: tuple[str, ...] = DEFAULT_ENABLED_CAPABILITIES,
 ):
-    config = make_config(tmp_path, enabled_skills=enabled_skills)
+    config = make_config(tmp_path, enabled_capabilities=enabled_capabilities)
     store = SessionStore(config.app_db_path)
     ark = FakeArkClient(ark_responses)
     executor = FakeToolExecutor(results=results, errors=errors)
@@ -85,7 +86,7 @@ def make_harness(
         store=store,
         ark_client=ark,
         tool_executor=executor,
-        skills=load_skills(enabled_skills, executor),
+        capabilities=load_capabilities(enabled_capabilities, executor, config),
     )
     return harness, store, ark, executor
 
@@ -256,11 +257,13 @@ def test_search_user_unique_match_does_not_short_circuit_when_user_is_asking_for
     assert executor.calls == [("search_user", {"name": "白洋"})]
 
 
-def test_disabling_skill_removes_tool_from_model_surface(tmp_path: Path) -> None:
-    enabled_skills = tuple(skill for skill in DEFAULT_ENABLED_SKILLS if skill != "feishu_docs")
+def test_disabling_capability_removes_tool_from_model_surface(tmp_path: Path) -> None:
+    enabled_capabilities = tuple(
+        capability for capability in DEFAULT_ENABLED_CAPABILITIES if capability != "feishu_docs"
+    )
     harness, _, ark, _ = make_harness(
         tmp_path,
-        enabled_skills=enabled_skills,
+        enabled_capabilities=enabled_capabilities,
         ark_responses=[ArkResponse(text="你好", function_calls=[], raw={})],
     )
 
@@ -270,7 +273,7 @@ def test_disabling_skill_removes_tool_from_model_surface(tmp_path: Path) -> None
     assert "create_doc" not in tool_names
 
 
-def test_prompt_contains_persona_policy_and_skill_guidance(tmp_path: Path) -> None:
+def test_prompt_contains_persona_policy_skill_and_capability_guidance(tmp_path: Path) -> None:
     harness, _, ark, _ = make_harness(
         tmp_path,
         ark_responses=[ArkResponse(text="你好呀", function_calls=[], raw={})],
@@ -281,4 +284,5 @@ def test_prompt_contains_persona_policy_and_skill_guidance(tmp_path: Path) -> No
     prompt = ark.prompts[0]
     assert "你是爱弥斯" in prompt
     assert "【Policy】" in prompt
-    assert "feishu_im skill" in prompt
+    assert "agent skill: feishu-agent-workflows" in prompt
+    assert "feishu_im capability" in prompt

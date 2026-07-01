@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .skills.base import ToolSpec
+from .capabilities.base import ToolSpec
 
 
 def responses_tools(tools: list[ToolSpec] | tuple[ToolSpec, ...] | Any) -> list[dict[str, Any]]:

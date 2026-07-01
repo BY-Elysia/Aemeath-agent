@@ -14,8 +14,9 @@ HELP_TEXT = """可用命令：
   /cancel               取消当前待执行动作
   /history              查看当前会话历史
   /pending              查看当前待确认动作
-  /skills               查看当前已启用 skill
-  /whoami               查看当前 persona、模型和 skill
+  /skills               查看当前已启用 Agent Skills
+  /capabilities         查看当前已启用运行时 capabilities
+  /whoami               查看当前 persona、模型、Agent Skills 和 capabilities
   /session <id>         切换会话 ID
   /exit                 退出
 """
@@ -67,6 +68,9 @@ class ShellClient:
             return False
         if line == "/skills":
             self._skills()
+            return False
+        if line == "/capabilities":
+            self._capabilities()
             return False
         if line == "/whoami":
             self._whoami()
@@ -138,8 +142,12 @@ class ShellClient:
         )
 
     def _skills(self) -> None:
-        for skill in self._harness.list_skills():
+        for skill in self._harness.list_agent_skills():
             print(f"{skill['name']}: {skill['description']}")
+
+    def _capabilities(self) -> None:
+        for capability in self._harness.list_capabilities():
+            print(f"{capability['name']}: {capability['description']}")
 
     def _whoami(self) -> None:
         identity = self._harness.whoami()
@@ -147,7 +155,8 @@ class ShellClient:
             {
                 "persona": identity.persona,
                 "model": identity.model,
-                "skills": list(identity.skills),
+                "agent_skills": list(identity.agent_skills),
+                "capabilities": list(identity.capabilities),
             }
         )
 

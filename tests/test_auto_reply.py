@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from feishu_agent.auto_reply import AutoReplyWorker
+from feishu_agent.auto_reply import AutoReplyWorker, parse_uploaded_file
 from feishu_agent.schemas import ChatResponse, ConfirmActionResponse
 from feishu_agent.store import SessionStore
 
@@ -39,6 +39,16 @@ class FakeReplyClient:
         self.calls.append((message_id, text))
 
 
+class FakeFileDownloader:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.calls: list[tuple[str, str, str]] = []
+
+    def download_file(self, *, message_id: str, file_key: str, file_name: str) -> Path:
+        self.calls.append((message_id, file_key, file_name))
+        return self.path
+
+
 def make_worker(
     tmp_path: Path,
     *,
@@ -47,6 +57,7 @@ def make_worker(
     bot_mention_ids: tuple[str, ...] = (),
     bot_mention_names: tuple[str, ...] = (),
     harness: FakeHarness | None = None,
+    file_downloader=None,
 ):
     store = SessionStore(tmp_path / "app.db")
     reply_client = FakeReplyClient()
@@ -58,6 +69,7 @@ def make_worker(
         app_id=app_id,
         bot_mention_ids=bot_mention_ids,
         bot_mention_names=bot_mention_names,
+        file_downloader=file_downloader,
     )
     return store, worker, reply_client
 
@@ -327,3 +339,36 @@ def test_auto_reply_strips_mention_key_prefix_from_group_message(tmp_path: Path)
 
     assert agent.chat_calls == [("im-chat:oc_10", "帮我查今天日程")]
     assert reply_client.calls == [("om_10", "收到")]
+
+
+def test_parse_uploaded_file_from_lark_cli_content() -> None:
+    uploaded_file = parse_uploaded_file('<file key="file_v3_xxx" name="paper.pdf"/>')
+
+    assert uploaded_file is not None
+    assert uploaded_file.file_key == "file_v3_xxx"
+    assert uploaded_file.name == "paper.pdf"
+
+
+def test_auto_reply_handles_uploaded_pdf_file(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    downloader = FakeFileDownloader(pdf_path)
+    agent = FakeHarness(chat_responses=[{"status": "message", "message": "收到 PDF"}])
+    _, worker, reply_client = make_worker(tmp_path, harness=agent, file_downloader=downloader)
+
+    worker.handle_event(
+        {
+            "message_id": "om_pdf",
+            "chat_id": "oc_pdf",
+            "chat_type": "p2p",
+            "message_type": "file",
+            "content": '<file key="file_v3_xxx" name="paper.pdf"/>',
+            "sender_type": "user",
+        }
+    )
+
+    assert downloader.calls == [("om_pdf", "file_v3_xxx", "paper.pdf")]
+    assert agent.chat_calls[0][0] == "im-chat:oc_pdf"
+    assert "file://" in agent.chat_calls[0][1]
+    assert "请阅读这篇论文" in agent.chat_calls[0][1]
+    assert reply_client.calls == [("om_pdf", "收到 PDF")]

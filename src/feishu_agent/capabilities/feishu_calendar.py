@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from ..tool_executor import ToolExecutor
-from .base import Skill, SkillContext, ToolSpec
+from .base import Capability, CapabilityContext, ToolSpec
 
 
-class FeishuDocsSkill(Skill):
-    name = "feishu_docs"
-    description = "飞书文档创建能力。"
+class FeishuCalendarCapability(Capability):
+    name = "feishu_calendar"
+    description = "飞书日程查询能力。"
 
     def __init__(self, executor: ToolExecutor) -> None:
         self._executor = executor
@@ -16,13 +16,12 @@ class FeishuDocsSkill(Skill):
     def get_tools(self) -> list[ToolSpec]:
         return [
             ToolSpec(
-                name="create_doc",
-                description="Create a Feishu document from markdown using user identity.",
+                name="list_agenda",
+                description="List calendar agenda for a given date in YYYY-MM-DD format using user identity.",
                 parameters={
                     "type": "object",
                     "properties": {
-                        "title": {"type": "string", "description": "Document title."},
-                        "markdown": {"type": "string", "description": "Markdown body."},
+                        "date": {"type": "string", "description": "Date in YYYY-MM-DD format."},
                         "send_as": {
                             "type": "string",
                             "enum": ["user"],
@@ -30,24 +29,24 @@ class FeishuDocsSkill(Skill):
                             "description": "Identity. Always user in v1.",
                         },
                     },
-                    "required": ["title", "markdown"],
+                    "required": ["date"],
                     "additionalProperties": False,
                 },
-                requires_confirmation=True,
+                requires_confirmation=False,
             )
         ]
 
     def get_guidance(self) -> str:
         return (
-            "feishu_docs skill:\n"
-            "- 创建文档前要先明确标题和正文内容。\n"
-            "- create_doc 属于写操作，必须进入确认流。"
+            "feishu_calendar capability:\n"
+            "- 查询今日日程或指定日期行程时，调用 list_agenda。\n"
+            "- 用户侧日历资源默认走 user 身份。"
         )
 
     def execute(
         self,
         tool_name: str,
         args: dict[str, Any],
-        context: SkillContext,
+        context: CapabilityContext,
     ):
         return self._executor.execute(tool_name, args)

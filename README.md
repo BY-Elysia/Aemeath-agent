@@ -5,8 +5,9 @@
 当前版本已经升级为：
 
 - `AgentHarness` 运行时核心
-- `skill` 插件式能力装配
-- 爱弥斯人格 + agent policy + skill guidance 三层 prompt
+- `capability` 运行时工具能力装配
+- `.agents/skills` 标准 Agent Skill 指导
+- 爱弥斯人格 + agent policy + Agent Skills + runtime capabilities 四层 prompt
 - Shell、HTTP、飞书事件三种入口共用同一条执行链路
 
 ## 架构
@@ -14,9 +15,11 @@
 核心分层：
 
 - `AgentHarness`
-  统一管理模型调用、会话、prompt 组装、skill 装配、工具执行、确认流、审计日志
-- `skills`
-  每个 skill 提供一组相关能力，包括工具定义、执行入口和 guidance
+  统一管理模型调用、会话、prompt 组装、Agent Skill 指导、capability 装配、工具执行、确认流、审计日志
+- `.agents/skills`
+  标准 Agent Skill 目录；每个 skill 必须有 `SKILL.md`，用于描述工作流和专业读法
+- `capabilities`
+  Python 运行时能力包；每个 capability 提供工具定义、执行入口和少量工具选择 guidance
 - `ToolExecutor`
   把工具翻译成受控的 `lark-cli` 命令
 - `SessionStore`
@@ -24,17 +27,26 @@
 
 当前主文件：
 
-- [harness.py](/Users/by/Desktop/feishu-agent/src/feishu_agent/harness.py)
-- [skills](/Users/by/Desktop/feishu-agent/src/feishu_agent/skills)
-- [prompting.py](/Users/by/Desktop/feishu-agent/src/feishu_agent/prompting.py)
-- [persona.py](/Users/by/Desktop/feishu-agent/src/feishu_agent/persona.py)
-- [app.py](/Users/by/Desktop/feishu-agent/src/feishu_agent/app.py)
-- [shell.py](/Users/by/Desktop/feishu-agent/src/feishu_agent/shell.py)
-- [auto_reply.py](/Users/by/Desktop/feishu-agent/src/feishu_agent/auto_reply.py)
+- [harness.py](src/feishu_agent/harness.py)
+- [capabilities](src/feishu_agent/capabilities)
+- [.agents/skills](.agents/skills)
+- [prompting.py](src/feishu_agent/prompting.py)
+- [persona.py](src/feishu_agent/persona.py)
+- [app.py](src/feishu_agent/app.py)
+- [shell.py](src/feishu_agent/shell.py)
+- [auto_reply.py](src/feishu_agent/auto_reply.py)
 
-## 当前 Skill 与工具
+## 当前 Agent Skills、Capabilities 与工具
 
-默认启用的 skill：
+默认启用的 Agent Skills：
+
+- `feishu-agent-workflows`
+
+按需使用的专业 Agent Skills：
+
+- `llm-paper-reader`
+
+默认启用的 runtime capabilities：
 
 - `conversation`
 - `feishu_contact`
@@ -42,6 +54,7 @@
 - `feishu_calendar`
 - `feishu_docs`
 - `feishu_search`
+- `paper_reader`
 
 当前暴露给模型的工具：
 
@@ -50,13 +63,17 @@
 - `list_agenda`
 - `create_doc`
 - `search_messages`
+- `read_paper_url_to_feishu_doc`
 
 写操作策略：
 
 - `send_dm` 需要确认
 - `create_doc` 需要确认
+- `read_paper_url_to_feishu_doc` 需要确认
 - 读操作直接执行
 - 自动回复入口不会绕过确认流
+
+`paper_reader` capability 支持在飞书里发送直接 PDF 链接、DOI 链接、arXiv 链接或上传 PDF 附件，确认后会按 `.agents/skills/llm-paper-reader/SKILL.md` 的标准读取论文、生成中文 Markdown 论文阅读报告，并写入新的飞书文档。
 
 ## `.env` 配置
 
@@ -81,7 +98,8 @@ MAX_HISTORY_MESSAGES=20
 MAX_TOOL_ROUND_TRIPS=6
 FEISHU_AGENT_BASE_URL=http://127.0.0.1:8000
 AGENT_PERSONA=aemeath
-ENABLED_SKILLS=conversation,feishu_contact,feishu_im,feishu_calendar,feishu_docs,feishu_search
+ENABLED_CAPABILITIES=conversation,feishu_contact,feishu_im,feishu_calendar,feishu_docs,feishu_search,paper_reader
+ENABLED_AGENT_SKILLS=feishu-agent-workflows
 GROUP_REPLY_MODE=off
 BOT_MENTION_IDS=
 BOT_MENTION_NAMES=
@@ -103,8 +121,10 @@ AUTO_REPLY_P2P_ONLY=true
   填你在火山方舟为 `doubao-seed-2.0-pro` 创建的推理接入点 `Endpoint ID`
 - `AGENT_PERSONA`
   当前默认值是 `aemeath`
-- `ENABLED_SKILLS`
-  控制加载哪些 skill，逗号分隔
+- `ENABLED_CAPABILITIES`
+  控制加载哪些运行时 capability，逗号分隔
+- `ENABLED_AGENT_SKILLS`
+  控制加载哪些 `.agents/skills/<name>/SKILL.md` 指导，逗号分隔；当前默认 `feishu-agent-workflows`
 - `GROUP_REPLY_MODE`
   `off | all | mention`
 - `BOT_MENTION_IDS`
@@ -124,7 +144,7 @@ AUTO_REPLY_P2P_ONLY=true
 ## 安装
 
 ```bash
-cd /Users/by/Desktop/feishu-agent
+cd /path/to/feishu-agent
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -138,7 +158,7 @@ python -m pip install -e ".[dev]"
 Shell 已经直接接入本地 `AgentHarness`，不依赖 HTTP 服务。
 
 ```bash
-cd /Users/by/Desktop/feishu-agent
+cd /path/to/feishu-agent
 source .venv/bin/activate
 feishu-agent-shell
 ```
@@ -170,6 +190,7 @@ Shell 内置命令：
 - `/history`
 - `/pending`
 - `/skills`
+- `/capabilities`
 - `/whoami`
 - `/confirm`
 - `/cancel`
@@ -181,7 +202,7 @@ Shell 内置命令：
 如果你还要给别的客户端或桌宠 UI 使用，可以启动 HTTP 服务：
 
 ```bash
-cd /Users/by/Desktop/feishu-agent
+cd /path/to/feishu-agent
 source .venv/bin/activate
 feishu-agent
 ```
@@ -217,7 +238,7 @@ uvicorn feishu_agent.app:create_app --factory --host 127.0.0.1 --port 8000
 启动：
 
 ```bash
-cd /Users/by/Desktop/feishu-agent
+cd /path/to/feishu-agent
 source .venv/bin/activate
 feishu-agent-reply-bot
 ```
@@ -283,33 +304,45 @@ curl -s http://127.0.0.1:8000/actions/<ACTION_ID>/confirm \
 
 ## 开发说明
 
-### 新增 Skill
+### 新增 Agent Skill
 
-新增 skill 的最小要求：
+新增 Agent Skill 的最小要求：
 
-1. 在 [skills](/Users/by/Desktop/feishu-agent/src/feishu_agent/skills) 下新增 skill 文件
+1. 在 [.agents/skills](.agents/skills) 下新增目录
+2. 必须包含 `SKILL.md`
+3. `SKILL.md` 必须包含 YAML frontmatter：
+   - `name`
+   - `description`
+4. 如需运行时默认加载，把 skill 名加入 `.env` 的 `ENABLED_AGENT_SKILLS`
+
+### 新增 Runtime Capability
+
+新增 capability 的最小要求：
+
+1. 在 [capabilities](src/feishu_agent/capabilities) 下新增 capability 文件
 2. 实现：
    - `get_tools()`
    - `get_guidance()`
    - `execute()`
-3. 在 [skills/__init__.py](/Users/by/Desktop/feishu-agent/src/feishu_agent/skills/__init__.py) 里注册 factory
-4. 把 skill 名加入 `.env` 的 `ENABLED_SKILLS`
+3. 在 [capabilities/__init__.py](src/feishu_agent/capabilities/__init__.py) 里注册 factory
+4. 把 capability 名加入 `.env` 的 `ENABLED_CAPABILITIES`
 
 ### Prompt 组成
 
-完整 prompt 由这三层组成：
+完整 prompt 由四层组成：
 
 1. persona prompt
 2. policy prompt
-3. skill guidance
+3. Agent Skills (`.agents/skills/*/SKILL.md`)
+4. runtime capability guidance
 
-组装逻辑在 [prompting.py](/Users/by/Desktop/feishu-agent/src/feishu_agent/prompting.py)。
+组装逻辑在 [prompting.py](src/feishu_agent/prompting.py)。
 
 ### 审计数据
 
 SQLite 默认位置：
 
-- [app.db](/Users/by/Desktop/feishu-agent/data/app.db)
+- [app.db](data/app.db)
 
 主要表：
 
@@ -320,7 +353,7 @@ SQLite 默认位置：
 ## 测试
 
 ```bash
-cd /Users/by/Desktop/feishu-agent
+cd /path/to/feishu-agent
 source .venv/bin/activate
 python -m pytest -q
 ```
@@ -328,7 +361,7 @@ python -m pytest -q
 当前测试覆盖：
 
 - harness 主流程
-- skill 装配
+- Agent Skill 与 capability 装配
 - prompt 组成
 - shell 命令
 - auto reply
@@ -337,4 +370,4 @@ python -m pytest -q
 
 ## launchd 模板
 
-可参考 [deploy/com.by.feishu-agent.plist](/Users/by/Desktop/feishu-agent/deploy/com.by.feishu-agent.plist)。
+可参考 [deploy/com.by.feishu-agent.plist](deploy/com.by.feishu-agent.plist)。

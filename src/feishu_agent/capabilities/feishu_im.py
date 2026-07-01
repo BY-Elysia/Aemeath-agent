@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from ..tool_executor import ToolExecutor
-from .base import Skill, SkillContext, ToolSpec
+from .base import Capability, CapabilityContext, ToolSpec
 
 
-class FeishuImSkill(Skill):
+class FeishuImCapability(Capability):
     name = "feishu_im"
     description = "飞书即时通讯发送能力。"
 
@@ -39,7 +39,7 @@ class FeishuImSkill(Skill):
 
     def get_guidance(self) -> str:
         return (
-            "feishu_im skill:\n"
+            "feishu_im capability:\n"
             "- send_dm 只能用于机器人身份的私聊发送。\n"
             "- 当用户意图是“给某人发消息”，且已拿到唯一 open_id 时，调用 send_dm。\n"
             "- 所有消息发送都要走确认流，不能直接宣称已经发出。"
@@ -49,6 +49,6 @@ class FeishuImSkill(Skill):
         self,
         tool_name: str,
         args: dict[str, Any],
-        context: SkillContext,
+        context: CapabilityContext,
     ):
         return self._executor.execute(tool_name, args)

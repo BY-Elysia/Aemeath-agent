@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feishu Agent Workflows"
+  short_description: "Operate Feishu tools with confirmations"
+  default_prompt: "Use $feishu-agent-workflows to decide when to call Feishu capabilities, handle confirmations, search contacts before direct messages, create documents, read uploaded paper PDFs, and keep ordinary chat natural."

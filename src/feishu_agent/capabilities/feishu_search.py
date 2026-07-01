@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from ..tool_executor import ToolExecutor
-from .base import Skill, SkillContext, ToolSpec
+from .base import Capability, CapabilityContext, ToolSpec
 
 
-class FeishuCalendarSkill(Skill):
-    name = "feishu_calendar"
-    description = "飞书日程查询能力。"
+class FeishuSearchCapability(Capability):
+    name = "feishu_search"
+    description = "飞书消息检索能力。"
 
     def __init__(self, executor: ToolExecutor) -> None:
         self._executor = executor
@@ -16,12 +16,12 @@ class FeishuCalendarSkill(Skill):
     def get_tools(self) -> list[ToolSpec]:
         return [
             ToolSpec(
-                name="list_agenda",
-                description="List calendar agenda for a given date in YYYY-MM-DD format using user identity.",
+                name="search_messages",
+                description="Search Feishu messages by keyword using user identity.",
                 parameters={
                     "type": "object",
                     "properties": {
-                        "date": {"type": "string", "description": "Date in YYYY-MM-DD format."},
+                        "query": {"type": "string", "description": "Search keyword."},
                         "send_as": {
                             "type": "string",
                             "enum": ["user"],
@@ -29,7 +29,7 @@ class FeishuCalendarSkill(Skill):
                             "description": "Identity. Always user in v1.",
                         },
                     },
-                    "required": ["date"],
+                    "required": ["query"],
                     "additionalProperties": False,
                 },
                 requires_confirmation=False,
@@ -38,15 +38,15 @@ class FeishuCalendarSkill(Skill):
 
     def get_guidance(self) -> str:
         return (
-            "feishu_calendar skill:\n"
-            "- 查询今日日程或指定日期行程时，调用 list_agenda。\n"
-            "- 用户侧日历资源默认走 user 身份。"
+            "feishu_search capability:\n"
+            "- 当用户要求搜索聊天记录或关键词消息时，调用 search_messages。\n"
+            "- 这是只读能力，不需要确认。"
         )
 
     def execute(
         self,
         tool_name: str,
         args: dict[str, Any],
-        context: SkillContext,
+        context: CapabilityContext,
     ):
         return self._executor.execute(tool_name, args)

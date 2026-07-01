@@ -1,16 +1,50 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .skills import DEFAULT_ENABLED_SKILLS
+from .agent_skills import DEFAULT_ENABLED_AGENT_SKILLS
+from .capabilities import DEFAULT_ENABLED_CAPABILITIES
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
+
+
+def resolve_lark_cli_bin(cli_bin: str) -> str:
+    candidate = cli_bin.strip() or "lark-cli"
+    if Path(candidate).expanduser().exists():
+        return str(Path(candidate).expanduser())
+
+    resolved = shutil.which(candidate)
+    if resolved:
+        return resolved
+
+    if os.name != "nt":
+        return candidate
+
+    candidate_name = Path(candidate).name.lower()
+    if candidate_name not in {"lark-cli", "lark-cli.cmd", "lark-cli.exe", "lark-cli.ps1"}:
+        return candidate
+
+    names = [candidate_name] if "." in candidate_name else ["lark-cli.cmd", "lark-cli.exe", "lark-cli"]
+    search_dirs: list[Path] = []
+    if appdata := os.getenv("APPDATA"):
+        search_dirs.append(Path(appdata) / "npm")
+    if userprofile := os.getenv("USERPROFILE"):
+        search_dirs.append(Path(userprofile) / "AppData" / "Roaming" / "npm")
+
+    for directory in dict.fromkeys(search_dirs):
+        for name in names:
+            path = directory / name
+            if path.exists():
+                return str(path)
+
+    return candidate
 
 
 @dataclass(frozen=True)
@@ -29,7 +63,8 @@ class AppConfig:
     bot_mention_ids: tuple[str, ...]
     bot_mention_names: tuple[str, ...]
     agent_persona: str = "aemeath"
-    enabled_skills: tuple[str, ...] = DEFAULT_ENABLED_SKILLS
+    enabled_capabilities: tuple[str, ...] = DEFAULT_ENABLED_CAPABILITIES
+    enabled_agent_skills: tuple[str, ...] = DEFAULT_ENABLED_AGENT_SKILLS
     tts_reply_mode: str = "off"
     tts_space: str = "Plachta/VITS-Umamusume-voice-synthesizer"
     tts_api_name: str = "/tts_fn"
@@ -48,7 +83,7 @@ class AppConfig:
             ark_api_key=os.getenv("ARK_API_KEY", ""),
             ark_base_url=os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
             ark_model=os.getenv("ARK_MODEL", ""),
-            lark_cli_bin=os.getenv("LARK_CLI_BIN", "lark-cli"),
+            lark_cli_bin=resolve_lark_cli_bin(os.getenv("LARK_CLI_BIN", "lark-cli")),
             app_db_path=db_path,
             command_timeout_seconds=int(os.getenv("COMMAND_TIMEOUT_SECONDS", "30")),
             max_history_messages=int(os.getenv("MAX_HISTORY_MESSAGES", "20")),
@@ -60,7 +95,8 @@ class AppConfig:
             bot_mention_ids=cls._split_csv_env("BOT_MENTION_IDS"),
             bot_mention_names=cls._split_csv_env("BOT_MENTION_NAMES"),
             agent_persona=os.getenv("AGENT_PERSONA", "aemeath").strip().lower() or "aemeath",
-            enabled_skills=cls._resolve_enabled_skills(),
+            enabled_capabilities=cls._resolve_enabled_capabilities(),
+            enabled_agent_skills=cls._resolve_enabled_agent_skills(),
             tts_reply_mode=os.getenv("TTS_REPLY_MODE", "off").strip().lower() or "off",
             tts_space=os.getenv("TTS_SPACE", "Plachta/VITS-Umamusume-voice-synthesizer").strip()
             or "Plachta/VITS-Umamusume-voice-synthesizer",
@@ -99,10 +135,19 @@ class AppConfig:
         return tuple(item.strip() for item in value.split(",") if item.strip())
 
     @staticmethod
-    def _resolve_enabled_skills() -> tuple[str, ...]:
-        value = os.getenv("ENABLED_SKILLS", "").strip()
+    def _resolve_enabled_capabilities() -> tuple[str, ...]:
+        value = os.getenv("ENABLED_CAPABILITIES", "").strip()
         if not value:
-            return DEFAULT_ENABLED_SKILLS
+            value = os.getenv("ENABLED_SKILLS", "").strip()
+        if not value:
+            return DEFAULT_ENABLED_CAPABILITIES
+        return tuple(item.strip() for item in value.split(",") if item.strip())
+
+    @staticmethod
+    def _resolve_enabled_agent_skills() -> tuple[str, ...]:
+        value = os.getenv("ENABLED_AGENT_SKILLS", "").strip()
+        if not value:
+            return DEFAULT_ENABLED_AGENT_SKILLS
         return tuple(item.strip() for item in value.split(",") if item.strip())
 
     def validate(self) -> list[str]:
@@ -119,8 +164,8 @@ class AppConfig:
             errors.append("FEISHU_AGENT_BASE_URL is not set")
         if not self.agent_persona:
             errors.append("AGENT_PERSONA is not set")
-        if not self.enabled_skills:
-            errors.append("ENABLED_SKILLS must not be empty")
+        if not self.enabled_capabilities:
+            errors.append("ENABLED_CAPABILITIES must not be empty")
         if self.group_reply_mode not in {"off", "all", "mention"}:
             errors.append("GROUP_REPLY_MODE must be one of: off, all, mention")
         if self.tts_reply_mode not in {"off", "text_and_audio", "audio_only"}:

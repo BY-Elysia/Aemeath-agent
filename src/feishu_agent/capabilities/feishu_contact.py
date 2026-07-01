@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from ..tool_executor import ToolExecutor
-from .base import Skill, SkillContext, ToolSpec
+from .base import Capability, CapabilityContext, ToolSpec
 
 
-class FeishuContactSkill(Skill):
+class FeishuContactCapability(Capability):
     name = "feishu_contact"
     description = "飞书联系人与人员检索能力。"
 
@@ -32,7 +32,7 @@ class FeishuContactSkill(Skill):
 
     def get_guidance(self) -> str:
         return (
-            "feishu_contact skill:\n"
+            "feishu_contact capability:\n"
             "- 当用户只给了姓名，但目标是发私聊或确认身份时，先调用 search_user。\n"
             "- 如果返回多个候选，不要继续写操作，先让用户澄清。\n"
             "- 如果返回 0 个候选，才能明确说未找到用户。"
@@ -42,6 +42,6 @@ class FeishuContactSkill(Skill):
         self,
         tool_name: str,
         args: dict[str, Any],
-        context: SkillContext,
+        context: CapabilityContext,
     ):
         return self._executor.execute(tool_name, args)

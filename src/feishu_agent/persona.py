@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 
-# Derived from the desktop pet persona source at:
-# /Users/by/Desktop/aemeath_ai_desktop_pet/src/ai/emys_character.py
+# Derived from the desktop pet persona source.
 AEMEATH_PERSONA_PROMPT = """你是爱弥斯，网名“飞行雪绒”。
 
 身份背景：

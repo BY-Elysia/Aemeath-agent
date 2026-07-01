@@ -249,6 +249,17 @@ def summarize_pending_action(tool_name: str, args: dict[str, Any]) -> tuple[str,
                 "send_as": "user",
             },
         )
+    if tool_name == "read_paper_url_to_feishu_doc":
+        return (
+            "待确认：阅读论文网址并创建飞书文档。",
+            {
+                "title": str(args.get("title") or "").strip(),
+                "paper_url": str(args.get("paper_url") or "").strip(),
+                "focus": str(args.get("focus") or "").strip(),
+                "max_pages": args.get("max_pages") or 20,
+                "send_as": "user",
+            },
+        )
     return (
         f"待确认：执行 {tool_name}",
         args,
