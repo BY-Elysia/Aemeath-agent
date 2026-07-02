@@ -45,6 +45,11 @@ class FakeArkClient:
         return SimpleNamespace(text="# Demo Paper\n\n## 1. 论文信息与一句话概括\n测试 Markdown")
 
 
+class FailingArkClient:
+    def create_response(self, prompt: str, tools: list[dict[str, Any]]) -> SimpleNamespace:
+        raise RuntimeError("connection dropped")
+
+
 class FakeExecutor:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -164,6 +169,28 @@ def test_paper_reader_capability_rejects_missing_url(tmp_path: Path) -> None:
 
     assert exc_info.value.category == "parameter_error"
     assert "paper_url" in exc_info.value.message
+
+
+def test_paper_reader_capability_wraps_ark_errors(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    skill = PaperReaderCapability(
+        make_config(tmp_path),
+        FakeExecutor(),  # type: ignore[arg-type]
+        ark_client=FailingArkClient(),
+        text_extractor=lambda _path, _max_pages: "paper text",
+        pdf_downloader=lambda _url, _session_id: (pdf_path, "file:///paper.pdf"),
+    )
+
+    with pytest.raises(ToolExecutionError) as exc_info:
+        skill.execute(
+            "read_paper_url_to_feishu_doc",
+            {"title": "Demo", "paper_url": pdf_path.as_uri()},
+            CapabilityContext(session_id="s1", source="test"),
+        )
+
+    assert exc_info.value.category == "tool_error"
+    assert "Ark" in exc_info.value.message
 
 
 def test_paper_reader_capability_normalizes_arxiv_urls() -> None:

@@ -386,7 +386,7 @@ def summarize_pending_action(tool_name: str, args: dict[str, Any]) -> tuple[str,
                 "title": str(args.get("title") or "").strip(),
                 "paper_url": str(args.get("paper_url") or "").strip(),
                 "focus": str(args.get("focus") or "").strip(),
-                "max_pages": args.get("max_pages") or 20,
+                "max_pages": args.get("max_pages") or 8,
                 "send_as": "bot",
             },
         )

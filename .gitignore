@@ -6,6 +6,7 @@ __pycache__/
 .env
 data/*.db
 data/*.sqlite3
+data/integration/
 data/incoming/
 data/poll-state.json
 data/tts/

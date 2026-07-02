@@ -24,10 +24,10 @@ if TYPE_CHECKING:
     from ..config import AppConfig
 
 
-DEFAULT_MAX_PAGES = 20
+DEFAULT_MAX_PAGES = 8
 MAX_MAX_PAGES = 80
-MAX_SOURCE_CHARS = 48000
-MAX_MARKDOWN_CHARS = 16000
+MAX_SOURCE_CHARS = 30000
+MAX_MARKDOWN_CHARS = 12000
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 LLM_PAPER_READER_SKILL_DIR = PROJECT_ROOT / ".agents" / "skills" / "llm-paper-reader"
 LLM_PAPER_READER_REFERENCE_FILES = (
@@ -39,7 +39,7 @@ LLM_PAPER_READER_REFERENCE_FILES = (
     "references/experiment_checklist.md",
     "references/limitations_future_work.md",
 )
-MAX_SKILL_PROMPT_CHARS = 42000
+MAX_SKILL_PROMPT_CHARS = 22000
 
 
 class PaperArkClient(Protocol):
@@ -275,7 +275,18 @@ class PaperReaderCapability(Capability):
             focus=focus,
             max_pages=max_pages,
         )
-        response = self._ark_client.create_response(prompt, [])
+        try:
+            response = self._ark_client.create_response(prompt, [])
+        except Exception as exc:
+            raise ToolExecutionError(
+                "tool_error",
+                f"Ark 论文阅读报告生成失败: {exc}",
+                {
+                    "command": ["ark", "responses.create", "--model", self._config.ark_model],
+                    "stderr": str(exc),
+                    "duration_ms": 0,
+                },
+            ) from exc
         markdown = self._extract_response_text(response)
         if not markdown:
             raise ToolExecutionError("tool_error", "Ark did not return Markdown content")
@@ -304,7 +315,7 @@ class PaperReaderCapability(Capability):
             "- 最终 Markdown 会写入飞书文档，不要输出原始日志、证据索引或工具调用细节。\n"
             "- 当前自动化链路主要提供 PDF 正文抽取；如果没有可嵌入的原图或表格资源，不要伪造图表，直接说明原文图表需回看 PDF。\n"
             "- 只依据论文正文和明确的用户关注点写作。原文未提供的信息写“原文未明确说明”。\n"
-            "- 控制在 8000 到 12000 个中文字符左右，不要把整篇输出包在代码块里。\n\n"
+            "- 控制在 5000 到 9000 个中文字符左右，不要把整篇输出包在代码块里。\n\n"
             "【本次报告标题】\n"
             f"# {title}\n"
             f"{focus_line}"
